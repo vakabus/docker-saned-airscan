@@ -11,6 +11,10 @@ EOF
 
 # build SANE
 # based on https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=sane-git
+#
+# Modifications:
+# - reduced the default backends to epson (we don't need any, but epson is fast to compile and it doesn't work without at least one backend)
+# - patched the source code to expose network printers
 RUN <<EOF
 git clone https://gitlab.com/sane-project/backends.git
 cd backends
@@ -52,13 +56,16 @@ echo -e "data_portrange = 10000 - 10100\\n" >> /etc/sane.d/saned.conf
 # disable all preloaded backends
 echo "" >> /etc/sane.d/dll.conf
 
-# configure airscan to know about the particular printers
+# Configure airscan to know about the particular printers
+# test the eSCL URL manually by invoking `curl $URL/ScannerCapabilities`. You should get and XML.
 cat >> /etc/sane.d/airscan.conf <<EF
 [devices]
-"BODLOK" = http://192.168.192.68/active/msu/scan, WSD
-"LEJSEK" = http://192.168.192.67/active/msu/scan, WSD
+"BODLOK" = http://192.168.192.68/eSCL/, eSCL
+"LEJSEK" = http://192.168.192.67/eSCL/, eSCL
 [options]
 discovery = disable
+[debug]
+enable = true
 EF
 EOF
 
@@ -70,5 +77,12 @@ RUN chmod +x /tini
 ENTRYPOINT ["/tini", "--"]
 
 EXPOSE 6566/tcp
-CMD ["/usr/bin/saned", "-l", "-d128", "-e"]
+
+# For debug logs
+ENV SANE_DEBUG_DDL=255
+ENV SANE_DEBUG_NET=255
+
+# -d128 is for debug logs
+# -B32 sets the transmit buffer to 32kB. SANEWinDS uses this size and when something bigger is used, it crashes, leading to black images.
+CMD ["/usr/bin/saned", "-l", "-d128", "-e", "-B32"]
 
